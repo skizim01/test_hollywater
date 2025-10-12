@@ -1,0 +1,62 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+input CreateUserInput {
+  email: String!
+  firstName: String!
+  lastName: String!
+  password: String!
+  role: Role! = WRITER
+  status: Boolean! = false
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type Mutation {
+  createUser(createUserInput: CreateUserInput!): User!
+  login(email: String!, password: String!): String!
+  logout: Boolean!
+  refresh: String!
+  removeUser(id: String!): User!
+  updateUser(updateUserInput: UpdateUserInput!): User!
+}
+
+type Query {
+  userById(id: String!): User!
+  users: [User!]!
+}
+
+"""Users roles"""
+enum Role {
+  MODERATOR
+  WRITER
+}
+
+input UpdateUserInput {
+  email: String
+  firstName: String
+  id: String!
+  lastName: String
+  newEmail: String
+  newPassword: String
+  password: String
+  role: Role = WRITER
+  status: Boolean!
+}
+
+type User {
+  createdAt: DateTime!
+  deletedAt: DateTime!
+  email: String!
+  firstName: String!
+  id: String!
+  lastName: String!
+  role: Role!
+  status: Boolean!
+  token: String!
+  updatedAt: DateTime!
+}
