@@ -1,10 +1,10 @@
-version: "1.0"
+version: '1.0'
 services:
   database:
-    image: postgres:12
+    image: postgres:16.3
     restart: always
     ports:
-      - '5432:5432'
+      - '3333:5432'
     environment:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_USER=postgres
@@ -16,6 +16,22 @@ services:
       - nps_data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - '6379:6379'
+    networks:
+      - base-network
+    container_name: redis
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 30s
       retries: 5
@@ -35,13 +51,18 @@ services:
       - POSTGRES_DB=postgres
       - DB_HOST=database
       - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     networks:
       - base-network
     depends_on:
       database:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 volumes:
-  nps_data: { }
+  nps_data: {}
+  redis_data: {}
 networks:
   base-network:

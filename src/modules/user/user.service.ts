@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { BaseService } from '../baseModule/base.service';
+import { BaseService } from '../_baseModule/base.service';
 import { User } from './entities/user.entity';
 import { UserRepository } from './repositories/user.repository';
 import * as bcrypt from 'bcrypt';

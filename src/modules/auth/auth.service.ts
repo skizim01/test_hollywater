@@ -3,18 +3,52 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common';
 import { UserService } from '../user/user.service';
+import { User } from '../user/entities/user.entity';
 import * as bcrypt from 'bcrypt';
 import * as uuid from 'uuid';
-import * as process from 'process';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private jwtService: JwtService,
     private userService: UserService,
-  ) {}
+  ) {
+    this.validateEnvironmentVariables();
+  }
+
+  private validateEnvironmentVariables(): void {
+    const requiredEnvVars = ['JWT_EXPIRE_IN'];
+    const missingVars: string[] = [];
+
+    for (const envVar of requiredEnvVars) {
+      if (!process.env[envVar]) {
+        missingVars.push(envVar);
+      }
+    }
+
+    if (missingVars.length > 0) {
+      const errorMessage = `Missing required environment variables: ${missingVars.join(
+        ', ',
+      )}`;
+      this.logger.error(errorMessage);
+      throw new Error(errorMessage);
+    }
+
+    // Validate JWT_EXPIRE_IN is a valid number
+    const jwtExpireIn = Number(process.env.JWT_EXPIRE_IN);
+    if (isNaN(jwtExpireIn) || jwtExpireIn <= 0) {
+      const errorMessage = 'JWT_EXPIRE_IN must be a positive number';
+      this.logger.error(errorMessage);
+      throw new Error(errorMessage);
+    }
+
+    this.logger.log('Environment variables validation passed');
+  }
 
   async login(email: string, password: string) {
     const user = await this.userService.findOne({
@@ -35,12 +69,13 @@ export class AuthService {
       throw new UnauthorizedException('Login was not Successful');
     }
 
+    const jwtExpireIn = Number(process.env.JWT_EXPIRE_IN);
     const payload = {
       userId: user.id,
       role: user.role,
       sub: user.email,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + Number(process.env.JWT_EXPIRE_IN),
+      exp: Math.floor(Date.now() / 1000) + jwtExpireIn,
       jti: uuid.v4(),
     };
 
@@ -70,12 +105,13 @@ export class AuthService {
       throw new NotFoundException('User is not found');
     }
 
+    const jwtExpireIn = Number(process.env.JWT_EXPIRE_IN);
     const payload = {
       userId: user.id,
       role: user.role,
       sub: user.email,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + Number(process.env.JWT_EXPIRE_IN),
+      exp: Math.floor(Date.now() / 1000) + jwtExpireIn,
       jti: uuid.v4(),
     };
 
@@ -88,7 +124,7 @@ export class AuthService {
     return { access: access, session: refresh };
   }
 
-  async validateUser(payload: any): Promise<any> {
+  async validateUser(payload: { sub: string }): Promise<User | undefined> {
     return await this.userService.findOne({ where: { email: payload.sub } });
   }
 

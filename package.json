@@ -23,6 +23,7 @@
     "mc": "typeorm migration:create ./src/database/migrations/${NAME}",
     "mg": "npm run typeorm -- --d src/config/orm.config.ts migration:generate ./src/database/migrations/${NAME}",
     "mr": "npm run typeorm -- --d src/config/orm.config.ts migration:run",
+    "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
     "mre": "npm run typeorm -- --d src/config/orm.config.ts migration:revert",
     "pre-commit": "npm run lint && npm run format"
   },
@@ -47,7 +48,9 @@
     "passport": "^0.6.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.16.3",
+    "redis": "^4.6.0",
     "reflect-metadata": "^0.1.13",
+    "@nestjs/throttler": "^5.0.0",
     "rimraf": "^3.0.2",
     "rxjs": "^7.2.0",
     "typeorm": "^0.3.17"

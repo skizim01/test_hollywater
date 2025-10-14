@@ -5,6 +5,10 @@ import { AppConfigModule } from './config/appConfig.module';
 import { DatabaseModule } from './database/database.module';
 import { UserModule } from './modules/user/user.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BookModule } from './modules/book/book.module';
+import { AuthorModule } from './modules/author/author.module';
+import { RedisModule } from './modules/redis/redis.module';
+import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 
 @Module({
   imports: [
@@ -18,7 +22,11 @@ import { AuthModule } from './modules/auth/auth.module';
     AuthModule,
     AppConfigModule,
     DatabaseModule,
+    RedisModule,
+    RateLimitModule,
     UserModule,
+    BookModule,
+    AuthorModule,
   ],
   controllers: [],
   providers: [],
