@@ -12,8 +12,8 @@ import { Book } from '../../book/entities/book.entity';
 
 @ObjectType()
 @Entity('authors')
-@Index(['name']) // Індекс для пошуку по імені автора
-@Index(['createdAt']) // Індекс для сортування по даті створення
+@Index(['name'])
+@Index(['createdAt'])
 export class Author {
   @Field(() => Int)
   @PrimaryGeneratedColumn()

@@ -5,19 +5,21 @@ import { Author } from '../author/entities/author.entity';
 import { SearchBooksInput } from './dto/search-books.input';
 import { BookRepository } from './repository/book.repository';
 import { CacheService } from '../cache/cache.service';
+import { AuthorService } from '../author/author.service';
+import { CreateBookInput } from './dto/create-book.input';
+import { UpdateBookInput } from './dto/update-book.input';
 
 describe('BookService', () => {
   let service: BookService;
   let bookRepository: jest.Mocked<BookRepository>;
   let cacheService: jest.Mocked<CacheService>;
+  let authorService: jest.Mocked<AuthorService>;
 
   const mockBookRepository = {
     searchBooks: jest.fn(),
-    findAllWithPagination: jest.fn(),
-    findByIdWithAuthor: jest.fn(),
-    findByAuthorId: jest.fn(),
-    findByGenre: jest.fn(),
-    getStatistics: jest.fn(),
+    createBook: jest.fn(),
+    updateBook: jest.fn(),
+    findByAuthor: jest.fn(),
   };
 
   const mockAuthor: Author = {
@@ -34,6 +36,8 @@ describe('BookService', () => {
     title: 'Harry Potter',
     genre: GenreEnum.FICTION,
     publicationYear: 1997,
+    authorId: 1,
+    authorName: 'J.K. Rowling',
     author: mockAuthor,
     createdAt: new Date('2023-01-01'),
     updatedAt: new Date('2023-01-01'),
@@ -42,6 +46,11 @@ describe('BookService', () => {
   const mockCacheService = {
     getSearchResults: jest.fn(),
     setSearchResults: jest.fn(),
+    invalidateSearchCache: jest.fn(),
+  };
+
+  const mockAuthorService = {
+    findOne: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -56,12 +65,21 @@ describe('BookService', () => {
           provide: CacheService,
           useValue: mockCacheService,
         },
+        {
+          provide: AuthorService,
+          useValue: mockAuthorService,
+        },
       ],
     }).compile();
 
     service = module.get<BookService>(BookService);
     bookRepository = module.get(BookRepository);
     cacheService = module.get(CacheService);
+    authorService = module.get(AuthorService);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
@@ -123,177 +141,124 @@ describe('BookService', () => {
         mockResult,
       );
     });
-
-    it('should search books with genre filter', async () => {
-      const scienceBook: Book = {
-        id: 2,
-        title: 'Science Book',
-        genre: GenreEnum.SCIENCE,
-        publicationYear: 2020,
-        author: {
-          id: 2,
-          name: 'Science Author',
-          bio: 'Science writer',
-          books: [],
-          createdAt: new Date('2023-01-01'),
-          updatedAt: new Date('2023-01-01'),
-        },
-        createdAt: new Date('2023-01-01'),
-        updatedAt: new Date('2023-01-01'),
-      };
-      const mockResult = {
-        books: [scienceBook],
-        total: 3,
-        page: 1,
-        limit: 20,
-      };
-
-      cacheService.getSearchResults.mockResolvedValue(null);
-      bookRepository.searchBooks.mockResolvedValue(mockResult);
-
-      const searchInput: SearchBooksInput = {
-        filters: {
-          genre: GenreEnum.SCIENCE,
-        },
-      };
-
-      const result = await service.searchBooks(searchInput, 1, 20);
-
-      expect(result.books).toHaveLength(1);
-      expect(result.books[0].genre).toBe(GenreEnum.SCIENCE);
-    });
   });
 
-  describe('findOne', () => {
-    it('should return a book by ID', async () => {
-      const testBook: Book = {
-        id: 3,
-        title: 'Test Book',
+  describe('createBook', () => {
+    it('should create a book and invalidate cache', async () => {
+      const createInput: CreateBookInput = {
+        title: 'New Book',
         genre: GenreEnum.FICTION,
-        publicationYear: 2020,
-        author: {
-          id: 3,
-          name: 'Test Author',
-          bio: 'Test bio',
-          books: [],
-          createdAt: new Date('2023-01-01'),
-          updatedAt: new Date('2023-01-01'),
-        },
-        createdAt: new Date('2023-01-01'),
-        updatedAt: new Date('2023-01-01'),
+        publicationYear: 2023,
+        authorId: 1,
       };
 
-      bookRepository.findByIdWithAuthor.mockResolvedValue(testBook);
+      authorService.findOne.mockResolvedValue(mockAuthor);
+      bookRepository.createBook.mockResolvedValue(mockBook);
 
-      const result = await service.findOne(1);
+      const result = await service.createBook(createInput);
 
-      expect(result).toEqual(testBook);
-      expect(bookRepository.findByIdWithAuthor).toHaveBeenCalledWith(1);
-    });
-
-    it('should throw error if book not found', async () => {
-      bookRepository.findByIdWithAuthor.mockResolvedValue(null);
-
-      await expect(service.findOne(999)).rejects.toThrow(
-        'Book with ID 999 not found',
+      expect(result).toEqual(mockBook);
+      expect(authorService.findOne).toHaveBeenCalledWith(1);
+      expect(bookRepository.createBook).toHaveBeenCalledWith(
+        createInput,
+        'J.K. Rowling',
       );
+      expect(cacheService.invalidateSearchCache).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe('findAll', () => {
-    it('should return all books with pagination', async () => {
-      const mockResult = {
-        books: [mockBook],
-        total: 1,
-        page: 1,
-        limit: 20,
+  describe('updateBook', () => {
+    it('should update a book and invalidate cache', async () => {
+      const updateInput: UpdateBookInput = {
+        id: 1,
+        title: 'Updated Book',
       };
 
-      bookRepository.findAllWithPagination.mockResolvedValue(mockResult);
+      const currentBook = { ...mockBook };
+      bookRepository.findOne = jest.fn().mockResolvedValue(currentBook);
+      bookRepository.updateBook.mockResolvedValue(mockBook);
 
-      const result = await service.findAll(1, 20);
+      const result = await service.updateBook(updateInput);
 
-      expect(result).toEqual(mockResult);
-      expect(bookRepository.findAllWithPagination).toHaveBeenCalledWith(1, 20);
-    });
-
-    it('should use default pagination values', async () => {
-      const mockResult = {
-        books: [mockBook],
-        total: 1,
-        page: 1,
-        limit: 20,
-      };
-
-      bookRepository.findAllWithPagination.mockResolvedValue(mockResult);
-
-      await service.findAll();
-
-      expect(bookRepository.findAllWithPagination).toHaveBeenCalledWith(1, 20);
+      expect(result).toEqual(mockBook);
+      expect(bookRepository.updateBook).toHaveBeenCalledWith(
+        updateInput,
+        undefined,
+      );
+      expect(cacheService.invalidateSearchCache).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe('findByAuthor', () => {
+  describe('findByAuthorId', () => {
     it('should return books by author ID', async () => {
       const authorBooks = [mockBook];
-      bookRepository.findByAuthorId.mockResolvedValue(authorBooks);
+      bookRepository.findByAuthor.mockResolvedValue(authorBooks);
 
-      const result = await service.findByAuthor(1);
+      const result = await service.findByAuthorId(1);
 
       expect(result).toEqual(authorBooks);
-      expect(bookRepository.findByAuthorId).toHaveBeenCalledWith(1);
+      expect(bookRepository.findByAuthor).toHaveBeenCalledWith(1);
     });
 
     it('should return empty array when no books found for author', async () => {
-      bookRepository.findByAuthorId.mockResolvedValue([]);
+      bookRepository.findByAuthor.mockResolvedValue([]);
 
-      const result = await service.findByAuthor(999);
+      const result = await service.findByAuthorId(999);
 
       expect(result).toEqual([]);
-      expect(bookRepository.findByAuthorId).toHaveBeenCalledWith(999);
+      expect(bookRepository.findByAuthor).toHaveBeenCalledWith(999);
     });
   });
 
-  describe('findByGenre', () => {
-    it('should return books by genre', async () => {
-      const fictionBooks = [mockBook];
-      bookRepository.findByGenre.mockResolvedValue(fictionBooks);
+  describe('error handling', () => {
+    it('should handle repository errors in searchBooks', async () => {
+      const error = new Error('Database connection failed');
+      const searchInput: SearchBooksInput = { query: 'test' };
 
-      const result = await service.findByGenre(GenreEnum.FICTION);
+      cacheService.getSearchResults.mockResolvedValue(null);
+      bookRepository.searchBooks.mockRejectedValue(error);
 
-      expect(result).toEqual(fictionBooks);
-      expect(bookRepository.findByGenre).toHaveBeenCalledWith(
-        GenreEnum.FICTION,
+      await expect(service.searchBooks(searchInput, 1, 20)).rejects.toThrow(
+        'Database connection failed',
       );
     });
 
-    it('should return empty array when no books found for genre', async () => {
-      bookRepository.findByGenre.mockResolvedValue([]);
-
-      const result = await service.findByGenre(GenreEnum.SCIENCE);
-
-      expect(result).toEqual([]);
-      expect(bookRepository.findByGenre).toHaveBeenCalledWith(
-        GenreEnum.SCIENCE,
-      );
-    });
-  });
-
-  describe('getStatistics', () => {
-    it('should return book statistics', async () => {
-      const mockStats = {
-        totalBooks: 10,
-        booksByGenre: { Fiction: 5, Science: 3 },
-        booksByYear: { 2023: 2, 2022: 1 },
-        totalAuthors: 5,
+    it('should handle repository errors in createBook', async () => {
+      const error = new Error('Database connection failed');
+      const createInput: CreateBookInput = {
+        title: 'Test Book',
+        authorId: 1,
       };
 
-      bookRepository.getStatistics.mockResolvedValue(mockStats);
+      authorService.findOne.mockResolvedValue(mockAuthor);
+      bookRepository.createBook.mockRejectedValue(error);
 
-      const result = await service.getStatistics();
+      await expect(service.createBook(createInput)).rejects.toThrow(
+        'Database connection failed',
+      );
+    });
 
-      expect(result).toEqual(mockStats);
-      expect(bookRepository.getStatistics).toHaveBeenCalled();
+    it('should handle repository errors in updateBook', async () => {
+      const error = new Error('Database connection failed');
+      const updateInput: UpdateBookInput = { id: 1, title: 'Updated Book' };
+
+      const currentBook = { ...mockBook };
+      bookRepository.findOne = jest.fn().mockResolvedValue(currentBook);
+      bookRepository.updateBook.mockRejectedValue(error);
+
+      await expect(service.updateBook(updateInput)).rejects.toThrow(
+        'Database connection failed',
+      );
+    });
+
+    it('should handle repository errors in findByAuthorId', async () => {
+      const error = new Error('Database connection failed');
+
+      bookRepository.findByAuthor.mockRejectedValue(error);
+
+      await expect(service.findByAuthorId(1)).rejects.toThrow(
+        'Database connection failed',
+      );
     });
   });
 });

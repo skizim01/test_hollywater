@@ -12,7 +12,8 @@ type Author {
 }
 
 type Book {
-  author: Author!
+  author: Author
+  authorName: String!
   createdAt: DateTime!
   genre: GenreEnum
   id: Int!
@@ -24,6 +25,18 @@ type Book {
 input BookFilters {
   genre: GenreEnum
   publicationYear: PublicationYearRange
+}
+
+input CreateAuthorInput {
+  bio: String
+  name: String!
+}
+
+input CreateBookInput {
+  authorId: Int!
+  genre: GenreEnum
+  publicationYear: Int
+  title: String!
 }
 
 input CreateUserInput {
@@ -49,11 +62,15 @@ enum GenreEnum {
 }
 
 type Mutation {
+  createAuthor(createAuthorInput: CreateAuthorInput!): Author!
+  createBook(createBookInput: CreateBookInput!): Book!
   createUser(createUserInput: CreateUserInput!): User!
   login(email: String!, password: String!): String!
   logout: Boolean!
   refresh: String!
   removeUser(id: String!): User!
+  updateAuthor(updateAuthorInput: UpdateAuthorInput!): Author!
+  updateBook(updateBookInput: UpdateBookInput!): Book!
   updateUser(updateUserInput: UpdateUserInput!): User!
 }
 
@@ -63,16 +80,7 @@ input PublicationYearRange {
 }
 
 type Query {
-  author(id: Int!): Author!
-  authorStatistics: String!
-  authors: [Author!]!
-  authorsWithBookCount: String!
-  book(id: Int!): Book!
-  bookStatistics: String!
-  books(limit: Int! = 20, page: Int! = 1): SearchBooksResult!
-  booksByAuthor(authorId: Int!): [Book!]!
-  booksByGenre(genre: GenreEnum!): [Book!]!
-  searchAuthors(name: String!): [Author!]!
+  searchAuthors(limit: Int! = 20, page: Int! = 1, searchInput: SearchAuthorsInput!): SearchAuthorsResult!
   searchBooks(limit: Int! = 20, page: Int! = 1, searchInput: SearchBooksInput!): SearchBooksResult!
   userById(id: String!): User!
   users: [User!]!
@@ -82,6 +90,17 @@ type Query {
 enum Role {
   MODERATOR
   WRITER
+}
+
+input SearchAuthorsInput {
+  query: String
+}
+
+type SearchAuthorsResult {
+  authors: [Author!]!
+  limit: Int!
+  page: Int!
+  total: Int!
 }
 
 input SearchBooksInput {
@@ -94,6 +113,20 @@ type SearchBooksResult {
   limit: Int!
   page: Int!
   total: Int!
+}
+
+input UpdateAuthorInput {
+  bio: String
+  id: Int!
+  name: String
+}
+
+input UpdateBookInput {
+  authorId: Int
+  genre: GenreEnum
+  id: Int!
+  publicationYear: Int
+  title: String
 }
 
 input UpdateUserInput {

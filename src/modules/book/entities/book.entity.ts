@@ -27,13 +27,7 @@ registerEnumType(GenreEnum, {
 
 @ObjectType()
 @Entity('books')
-@Index(['title']) // Індекс для пошуку по назві книги
-@Index(['genre']) // Індекс для фільтрації по жанру
-@Index(['publicationYear']) // Індекс для фільтрації по року публікації
-@Index(['author']) // Індекс для пошуку по автору
-@Index(['title', 'genre']) // Складений індекс для пошуку по назві та жанру
-@Index(['publicationYear', 'genre']) // Складений індекс для фільтрації по року та жанру
-@Index(['createdAt']) // Індекс для сортування по даті створення
+@Index(['publicationYear', 'genre'])
 export class Book {
   @Field(() => Int)
   @PrimaryGeneratedColumn()
@@ -54,10 +48,17 @@ export class Book {
   @Column({ type: 'int', nullable: true })
   publicationYear?: number;
 
-  @Field(() => Author)
+  @Field(() => Author, { nullable: true })
   @ManyToOne(() => Author, (author) => author.books, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'author_id' })
-  author: Author;
+  author?: Author;
+
+  @Column({ name: 'author_id' })
+  authorId: number;
+
+  @Field(() => String)
+  @Column({ name: 'author_name' })
+  authorName: string;
 
   @Field(() => Date)
   @CreateDateColumn()

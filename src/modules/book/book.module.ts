@@ -7,12 +7,14 @@ import { Author } from '../author/entities/author.entity';
 import { BookRepository } from './repository/book.repository';
 import { CacheModule } from '../cache/cache.module';
 import { RateLimitModule } from '../rate-limit/rate-limit.module';
+import { AuthorModule } from '../author/author.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Book, Author]),
     CacheModule,
     RateLimitModule,
+    AuthorModule,
   ],
   providers: [BookService, BookResolver, BookRepository],
   exports: [BookService, BookRepository],

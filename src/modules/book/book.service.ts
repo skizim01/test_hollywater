@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Book, GenreEnum } from './entities/book.entity';
 import { SearchBooksInput } from './dto/search-books.input';
 import { SearchBooksResult } from './dto/search-result.dto';
+import { CreateBookInput } from './dto/create-book.input';
+import { UpdateBookInput } from './dto/update-book.input';
 import { CacheService } from '../cache/cache.service';
 import { BookRepository } from './repository/book.repository';
+import { AuthorService } from '../author/author.service';
+import { Book } from './entities/book.entity';
 
 @Injectable()
 export class BookService {
@@ -12,6 +15,7 @@ export class BookService {
   constructor(
     private readonly bookRepository: BookRepository,
     private readonly cacheService: CacheService,
+    private readonly authorService: AuthorService,
   ) {}
 
   async searchBooks(
@@ -41,34 +45,52 @@ export class BookService {
     return result;
   }
 
-  async findAll(page = 1, limit = 20): Promise<SearchBooksResult> {
-    return this.bookRepository.findAllWithPagination(page, limit);
-  }
+  async createBook(createBookInput: CreateBookInput): Promise<Book> {
+    const author = await this.authorService.findOne(createBookInput.authorId);
 
-  async findOne(id: number): Promise<Book> {
-    const book = await this.bookRepository.findByIdWithAuthor(id);
+    const book = await this.bookRepository.createBook(
+      createBookInput,
+      author.name,
+    );
 
-    if (!book) {
-      throw new Error(`Book with ID ${id} not found`);
-    }
+    await this.cacheService.invalidateSearchCache();
+
+    this.logger.log(`Created book: ${book.title} by ${author.name}`);
 
     return book;
   }
 
-  async findByAuthor(authorId: number): Promise<Book[]> {
-    return this.bookRepository.findByAuthorId(authorId);
+  async updateBook(updateBookInput: UpdateBookInput): Promise<Book> {
+    const currentBook = await this.bookRepository.findOne({
+      where: { id: updateBookInput.id },
+    });
+    if (!currentBook) {
+      throw new Error(`Book with ID ${updateBookInput.id} not found`);
+    }
+
+    let authorName: string | undefined;
+
+    if (
+      updateBookInput.authorId &&
+      updateBookInput.authorId !== currentBook.authorId
+    ) {
+      const author = await this.authorService.findOne(updateBookInput.authorId);
+      authorName = author.name;
+    }
+
+    const updatedBook = await this.bookRepository.updateBook(
+      updateBookInput,
+      authorName,
+    );
+
+    await this.cacheService.invalidateSearchCache();
+
+    this.logger.log(`Updated book: ${updatedBook.title}`);
+
+    return updatedBook;
   }
 
-  async findByGenre(genre: GenreEnum): Promise<Book[]> {
-    return this.bookRepository.findByGenre(genre);
-  }
-
-  async getStatistics(): Promise<{
-    totalBooks: number;
-    booksByGenre: Record<string, number>;
-    booksByYear: Record<string, number>;
-    totalAuthors: number;
-  }> {
-    return this.bookRepository.getStatistics();
+  async findByAuthorId(authorId: number): Promise<Book[]> {
+    return this.bookRepository.findByAuthor(authorId);
   }
 }

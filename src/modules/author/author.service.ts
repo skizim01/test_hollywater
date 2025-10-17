@@ -1,21 +1,20 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Injectable, Logger } from '@nestjs/common';
 import { Author } from './entities/author.entity';
-import { Book } from '../book/entities/book.entity';
 import { AuthorRepository } from './repository/author.repository';
+import { SearchAuthorsInput } from './dto/search-authors.input';
+import { SearchAuthorsResult } from './dto/search-result.dto';
+import { CreateAuthorInput } from './dto/create-author.input';
+import { UpdateAuthorInput } from './dto/update-author.input';
+import { CacheService } from '../cache/cache.service';
 
 @Injectable()
 export class AuthorService {
+  private readonly logger = new Logger(AuthorService.name);
+
   constructor(
     private readonly authorRepository: AuthorRepository,
-    @InjectRepository(Book)
-    private readonly bookRepository: Repository<Book>,
+    private readonly cacheService: CacheService,
   ) {}
-
-  async findAll(): Promise<Author[]> {
-    return this.authorRepository.findAllWithBooks();
-  }
 
   async findOne(id: number): Promise<Author> {
     const author = await this.authorRepository.findByIdWithBooks(id);
@@ -27,20 +26,57 @@ export class AuthorService {
     return author;
   }
 
-  async findByName(name: string): Promise<Author[]> {
-    return this.authorRepository.findByName(name);
+  async searchAuthors(
+    searchInput: SearchAuthorsInput,
+    page = 1,
+    limit = 20,
+  ): Promise<SearchAuthorsResult> {
+    const cachedResult = await this.cacheService.getAuthorSearchResults(
+      searchInput,
+      page,
+      limit,
+    );
+
+    if (cachedResult) {
+      this.logger.debug('Returning cached author search results');
+      return cachedResult;
+    }
+
+    const result = await this.authorRepository.searchAuthors(
+      searchInput,
+      page,
+      limit,
+    );
+
+    await this.cacheService.setAuthorSearchResults(
+      searchInput,
+      page,
+      limit,
+      result,
+    );
+
+    return result;
   }
 
-  async findWithBookCount(): Promise<Array<Author & { bookCount: number }>> {
-    return this.authorRepository.findWithBookCount();
+  async createAuthor(createAuthorInput: CreateAuthorInput): Promise<Author> {
+    const author = await this.authorRepository.createAuthor(createAuthorInput);
+
+    await this.cacheService.invalidateAuthorSearchCache();
+
+    this.logger.log(`Created author: ${author.name}`);
+
+    return author;
   }
 
-  async getStatistics(): Promise<{
-    totalAuthors: number;
-    authorsWithBooks: number;
-    averageBooksPerAuthor: number;
-    mostProlificAuthor: string;
-  }> {
-    return this.authorRepository.getStatistics();
+  async updateAuthor(updateAuthorInput: UpdateAuthorInput): Promise<Author> {
+    const updatedAuthor = await this.authorRepository.updateAuthor(
+      updateAuthorInput,
+    );
+
+    await this.cacheService.invalidateAuthorSearchCache();
+
+    this.logger.log(`Updated author: ${updatedAuthor.name}`);
+
+    return updatedAuthor;
   }
 }

@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
-import { SearchBooksInput } from '../../modules/book/dto/search-books.input';
-import { SearchBooksResult } from '../../modules/book/dto/search-result.dto';
+import { SearchBooksInput } from '../book/dto/search-books.input';
+import { SearchBooksResult } from '../book/dto/search-result.dto';
+import { SearchAuthorsResult } from '../author/dto/search-result.dto';
 import { createHash } from 'crypto';
+import { SearchAuthorsInput } from '../author/dto/search-authors.input';
 
 @Injectable()
 export class CacheService {
@@ -158,6 +160,79 @@ export class CacheService {
     } catch (error) {
       this.logger.error(`Failed to get cache key info for ${key}:`, error);
       return { exists: false, ttl: -1 };
+    }
+  }
+
+  // Author search cache methods
+  private generateAuthorCacheKey(
+    searchInput: SearchAuthorsInput,
+    page: number,
+    limit: number,
+  ): string {
+    const cacheData = {
+      query: searchInput.query || '',
+      page,
+      limit,
+    };
+
+    const hash = createHash('md5')
+      .update(JSON.stringify(cacheData))
+      .digest('hex');
+
+    return `search_authors:${hash}`;
+  }
+
+  async getAuthorSearchResults(
+    searchInput: SearchAuthorsInput,
+    page: number,
+    limit: number,
+  ): Promise<SearchAuthorsResult | null> {
+    try {
+      const cacheKey = this.generateAuthorCacheKey(searchInput, page, limit);
+      const cachedResult = await this.redisService.getJson<SearchAuthorsResult>(
+        cacheKey,
+      );
+
+      if (cachedResult) {
+        this.logger.debug(`Cache hit for key: ${cacheKey}`);
+        return cachedResult;
+      }
+
+      this.logger.debug(`Cache miss for key: ${cacheKey}`);
+      return null;
+    } catch (error) {
+      this.logger.error('Failed to get cached author search results:', error);
+      return null;
+    }
+  }
+
+  async setAuthorSearchResults(
+    searchInput: SearchAuthorsInput,
+    page: number,
+    limit: number,
+    results: SearchAuthorsResult,
+    ttlSeconds: number = this.DEFAULT_TTL,
+  ): Promise<void> {
+    try {
+      const cacheKey = this.generateAuthorCacheKey(searchInput, page, limit);
+      await this.redisService.setJson(cacheKey, results, ttlSeconds);
+      this.logger.debug(`Cached author search results with key: ${cacheKey}`);
+    } catch (error) {
+      this.logger.error('Failed to cache author search results:', error);
+    }
+  }
+
+  async invalidateAuthorSearchCache(): Promise<number> {
+    try {
+      const searchPattern = 'search_authors:*';
+      const deletedCount = await this.redisService.deleteByPattern(
+        searchPattern,
+      );
+      this.logger.debug(`Invalidated ${deletedCount} author cache entries`);
+      return deletedCount;
+    } catch (error) {
+      this.logger.error('Failed to invalidate author search cache:', error);
+      return 0;
     }
   }
 }

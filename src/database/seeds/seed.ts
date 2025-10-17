@@ -314,6 +314,7 @@ async function seedDatabase() {
         genre: bookData.genre,
         publicationYear: bookData.year,
         author: randomAuthor,
+        authorName: randomAuthor.name,
       });
       books.push(book);
     }
@@ -333,6 +334,7 @@ async function seedDatabase() {
         genre: randomGenre,
         publicationYear: generateRandomYear(),
         author: randomAuthor,
+        authorName: randomAuthor.name,
       });
       books.push(book);
     }

@@ -4,23 +4,28 @@ import { AuthorService } from './author.service';
 import { Author } from './entities/author.entity';
 import { Book, GenreEnum } from '../book/entities/book.entity';
 import { AuthorRepository } from './repository/author.repository';
+import { CacheService } from '../cache/cache.service';
+import { SearchAuthorsInput } from './dto/search-authors.input';
+import { SearchAuthorsResult } from './dto/search-result.dto';
+import { CreateAuthorInput } from './dto/create-author.input';
+import { UpdateAuthorInput } from './dto/update-author.input';
 
 describe('AuthorService', () => {
   let service: AuthorService;
   let authorRepository: jest.Mocked<AuthorRepository>;
+  let cacheService: jest.Mocked<CacheService>;
 
   const mockAuthorRepository = {
-    findAllWithBooks: jest.fn(),
     findByIdWithBooks: jest.fn(),
-    findByName: jest.fn(),
-    findWithBookCount: jest.fn(),
-    getStatistics: jest.fn(),
+    searchAuthors: jest.fn(),
+    createAuthor: jest.fn(),
+    updateAuthor: jest.fn(),
   };
 
-  const mockBookRepository = {
-    find: jest.fn(),
-    findOne: jest.fn(),
-    count: jest.fn(),
+  const mockCacheService = {
+    getAuthorSearchResults: jest.fn(),
+    setAuthorSearchResults: jest.fn(),
+    invalidateAuthorSearchCache: jest.fn(),
   };
 
   const mockAuthor: Author = {
@@ -37,6 +42,8 @@ describe('AuthorService', () => {
     title: "Harry Potter and the Philosopher's Stone",
     genre: GenreEnum.FICTION,
     publicationYear: 1997,
+    authorId: 1,
+    authorName: 'J.K. Rowling',
     author: mockAuthor,
     createdAt: new Date('2023-01-01'),
     updatedAt: new Date('2023-01-01'),
@@ -51,15 +58,15 @@ describe('AuthorService', () => {
           useValue: mockAuthorRepository,
         },
         {
-          provide: getRepositoryToken(Book),
-          useValue: mockBookRepository,
+          provide: CacheService,
+          useValue: mockCacheService,
         },
       ],
     }).compile();
 
     service = module.get<AuthorService>(AuthorService);
     authorRepository = module.get(AuthorRepository);
-    bookRepository = module.get(getRepositoryToken(Book));
+    cacheService = module.get(CacheService);
   });
 
   afterEach(() => {
@@ -68,38 +75,6 @@ describe('AuthorService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
-  });
-
-  describe('findAll', () => {
-    it('should return all authors with books', async () => {
-      const mockAuthors = [
-        { ...mockAuthor, books: [mockBook] },
-        {
-          id: 2,
-          name: 'George R.R. Martin',
-          bio: 'American novelist',
-          books: [],
-          createdAt: new Date('2023-01-01'),
-          updatedAt: new Date('2023-01-01'),
-        },
-      ];
-
-      authorRepository.findAllWithBooks.mockResolvedValue(mockAuthors);
-
-      const result = await service.findAll();
-
-      expect(result).toEqual(mockAuthors);
-      expect(authorRepository.findAllWithBooks).toHaveBeenCalledTimes(1);
-    });
-
-    it('should return empty array when no authors exist', async () => {
-      authorRepository.findAllWithBooks.mockResolvedValue([]);
-
-      const result = await service.findAll();
-
-      expect(result).toEqual([]);
-      expect(authorRepository.findAllWithBooks).toHaveBeenCalledTimes(1);
-    });
   });
 
   describe('findOne', () => {
@@ -132,192 +107,98 @@ describe('AuthorService', () => {
     });
   });
 
-  describe('findByName', () => {
-    it('should return authors matching the name', async () => {
-      const mockAuthors = [
-        { ...mockAuthor, name: 'J.K. Rowling' },
-        { ...mockAuthor, id: 2, name: 'J.K. Rowling (Pseudonym)' },
-      ];
+  describe('searchAuthors', () => {
+    it('should return cached results when available', async () => {
+      const searchInput: SearchAuthorsInput = { query: 'test' };
+      const cachedResult: SearchAuthorsResult = {
+        authors: [mockAuthor],
+        total: 1,
+        page: 1,
+        limit: 20,
+      };
 
-      authorRepository.findByName.mockResolvedValue(mockAuthors);
+      cacheService.getAuthorSearchResults.mockResolvedValue(cachedResult);
 
-      const result = await service.findByName('J.K. Rowling');
+      const result = await service.searchAuthors(searchInput, 1, 20);
 
-      expect(result).toEqual(mockAuthors);
-      expect(authorRepository.findByName).toHaveBeenCalledWith('J.K. Rowling');
-    });
-
-    it('should return empty array when no authors match name', async () => {
-      authorRepository.findByName.mockResolvedValue([]);
-
-      const result = await service.findByName('Non-existent Author');
-
-      expect(result).toEqual([]);
-      expect(authorRepository.findByName).toHaveBeenCalledWith(
-        'Non-existent Author',
+      expect(result).toEqual(cachedResult);
+      expect(cacheService.getAuthorSearchResults).toHaveBeenCalledWith(
+        searchInput,
+        1,
+        20,
       );
+      expect(authorRepository.searchAuthors).not.toHaveBeenCalled();
     });
 
-    it('should handle partial name matches', async () => {
-      const mockAuthors = [
-        { ...mockAuthor, name: 'J.K. Rowling' },
-        { ...mockAuthor, id: 2, name: 'J.R.R. Tolkien' },
-      ];
+    it('should fetch from repository when cache miss', async () => {
+      const searchInput: SearchAuthorsInput = { query: 'test' };
+      const repositoryResult: SearchAuthorsResult = {
+        authors: [mockAuthor],
+        total: 1,
+        page: 1,
+        limit: 20,
+      };
 
-      authorRepository.findByName.mockResolvedValue(mockAuthors);
+      cacheService.getAuthorSearchResults.mockResolvedValue(null);
+      authorRepository.searchAuthors.mockResolvedValue(repositoryResult);
 
-      const result = await service.findByName('J.');
+      const result = await service.searchAuthors(searchInput, 1, 20);
 
-      expect(result).toEqual(mockAuthors);
-      expect(authorRepository.findByName).toHaveBeenCalledWith('J.');
-    });
-
-    it('should handle case insensitive search', async () => {
-      const mockAuthors = [{ ...mockAuthor, name: 'J.K. Rowling' }];
-
-      authorRepository.findByName.mockResolvedValue(mockAuthors);
-
-      const result = await service.findByName('j.k. rowling');
-
-      expect(result).toEqual(mockAuthors);
-      expect(authorRepository.findByName).toHaveBeenCalledWith('j.k. rowling');
+      expect(result).toEqual(repositoryResult);
+      expect(cacheService.getAuthorSearchResults).toHaveBeenCalledWith(
+        searchInput,
+        1,
+        20,
+      );
+      expect(authorRepository.searchAuthors).toHaveBeenCalledWith(
+        searchInput,
+        1,
+        20,
+      );
+      expect(cacheService.setAuthorSearchResults).toHaveBeenCalledWith(
+        searchInput,
+        1,
+        20,
+        repositoryResult,
+      );
     });
   });
 
-  describe('findWithBookCount', () => {
-    it('should return authors with book count', async () => {
-      const mockAuthorsWithCount = [
-        {
-          ...mockAuthor,
-          bookCount: 7,
-        },
-        {
-          id: 2,
-          name: 'George R.R. Martin',
-          bio: 'American novelist',
-          books: [],
-          createdAt: new Date('2023-01-01'),
-          updatedAt: new Date('2023-01-01'),
-          bookCount: 5,
-        },
-      ];
+  describe('createAuthor', () => {
+    it('should create author and invalidate cache', async () => {
+      const createInput: CreateAuthorInput = {
+        name: 'New Author',
+        bio: 'New author bio',
+      };
 
-      authorRepository.findWithBookCount.mockResolvedValue(
-        mockAuthorsWithCount,
-      );
+      authorRepository.createAuthor.mockResolvedValue(mockAuthor);
 
-      const result = await service.findWithBookCount();
+      const result = await service.createAuthor(createInput);
 
-      expect(result).toEqual(mockAuthorsWithCount);
-      expect(authorRepository.findWithBookCount).toHaveBeenCalledTimes(1);
-    });
-
-    it('should return empty array when no authors exist', async () => {
-      authorRepository.findWithBookCount.mockResolvedValue([]);
-
-      const result = await service.findWithBookCount();
-
-      expect(result).toEqual([]);
-      expect(authorRepository.findWithBookCount).toHaveBeenCalledTimes(1);
-    });
-
-    it('should handle authors with zero books', async () => {
-      const mockAuthorsWithCount = [
-        {
-          ...mockAuthor,
-          bookCount: 0,
-        },
-      ];
-
-      authorRepository.findWithBookCount.mockResolvedValue(
-        mockAuthorsWithCount,
-      );
-
-      const result = await service.findWithBookCount();
-
-      expect(result).toEqual(mockAuthorsWithCount);
-      expect(result[0].bookCount).toBe(0);
+      expect(result).toEqual(mockAuthor);
+      expect(authorRepository.createAuthor).toHaveBeenCalledWith(createInput);
+      expect(cacheService.invalidateAuthorSearchCache).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe('getStatistics', () => {
-    it('should return author statistics', async () => {
-      const mockStats = {
-        totalAuthors: 10,
-        authorsWithBooks: 8,
-        averageBooksPerAuthor: 3.5,
-        mostProlificAuthor: 'J.K. Rowling',
+  describe('updateAuthor', () => {
+    it('should update author and invalidate cache', async () => {
+      const updateInput: UpdateAuthorInput = {
+        id: 1,
+        name: 'Updated Author',
       };
 
-      authorRepository.getStatistics.mockResolvedValue(mockStats);
+      authorRepository.updateAuthor.mockResolvedValue(mockAuthor);
 
-      const result = await service.getStatistics();
+      const result = await service.updateAuthor(updateInput);
 
-      expect(result).toEqual(mockStats);
-      expect(authorRepository.getStatistics).toHaveBeenCalledTimes(1);
-    });
-
-    it('should handle case when no authors exist', async () => {
-      const mockStats = {
-        totalAuthors: 0,
-        authorsWithBooks: 0,
-        averageBooksPerAuthor: 0,
-        mostProlificAuthor: '',
-      };
-
-      authorRepository.getStatistics.mockResolvedValue(mockStats);
-
-      const result = await service.getStatistics();
-
-      expect(result).toEqual(mockStats);
-      expect(result.totalAuthors).toBe(0);
-      expect(result.averageBooksPerAuthor).toBe(0);
-    });
-
-    it('should handle case when all authors have books', async () => {
-      const mockStats = {
-        totalAuthors: 5,
-        authorsWithBooks: 5,
-        averageBooksPerAuthor: 4.2,
-        mostProlificAuthor: 'Stephen King',
-      };
-
-      authorRepository.getStatistics.mockResolvedValue(mockStats);
-
-      const result = await service.getStatistics();
-
-      expect(result).toEqual(mockStats);
-      expect(result.totalAuthors).toBe(result.authorsWithBooks);
-    });
-
-    it('should handle case when no authors have books', async () => {
-      const mockStats = {
-        totalAuthors: 3,
-        authorsWithBooks: 0,
-        averageBooksPerAuthor: 0,
-        mostProlificAuthor: '',
-      };
-
-      authorRepository.getStatistics.mockResolvedValue(mockStats);
-
-      const result = await service.getStatistics();
-
-      expect(result).toEqual(mockStats);
-      expect(result.authorsWithBooks).toBe(0);
-      expect(result.averageBooksPerAuthor).toBe(0);
+      expect(result).toEqual(mockAuthor);
+      expect(authorRepository.updateAuthor).toHaveBeenCalledWith(updateInput);
+      expect(cacheService.invalidateAuthorSearchCache).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('error handling', () => {
-    it('should handle repository errors in findAll', async () => {
-      const error = new Error('Database connection failed');
-      authorRepository.findAllWithBooks.mockRejectedValue(error);
-
-      await expect(service.findAll()).rejects.toThrow(
-        'Database connection failed',
-      );
-    });
-
     it('should handle repository errors in findOne', async () => {
       const error = new Error('Database connection failed');
       authorRepository.findByIdWithBooks.mockRejectedValue(error);
@@ -327,62 +208,38 @@ describe('AuthorService', () => {
       );
     });
 
-    it('should handle repository errors in findByName', async () => {
+    it('should handle repository errors in searchAuthors', async () => {
       const error = new Error('Database connection failed');
-      authorRepository.findByName.mockRejectedValue(error);
+      const searchInput: SearchAuthorsInput = { query: 'test' };
 
-      await expect(service.findByName('test')).rejects.toThrow(
+      cacheService.getAuthorSearchResults.mockResolvedValue(null);
+      authorRepository.searchAuthors.mockRejectedValue(error);
+
+      await expect(service.searchAuthors(searchInput, 1, 20)).rejects.toThrow(
         'Database connection failed',
       );
     });
 
-    it('should handle repository errors in findWithBookCount', async () => {
+    it('should handle repository errors in createAuthor', async () => {
       const error = new Error('Database connection failed');
-      authorRepository.findWithBookCount.mockRejectedValue(error);
+      const createInput: CreateAuthorInput = { name: 'Test Author' };
 
-      await expect(service.findWithBookCount()).rejects.toThrow(
+      authorRepository.createAuthor.mockRejectedValue(error);
+
+      await expect(service.createAuthor(createInput)).rejects.toThrow(
         'Database connection failed',
       );
     });
 
-    it('should handle repository errors in getStatistics', async () => {
+    it('should handle repository errors in updateAuthor', async () => {
       const error = new Error('Database connection failed');
-      authorRepository.getStatistics.mockRejectedValue(error);
+      const updateInput: UpdateAuthorInput = { id: 1, name: 'Updated Author' };
 
-      await expect(service.getStatistics()).rejects.toThrow(
+      authorRepository.updateAuthor.mockRejectedValue(error);
+
+      await expect(service.updateAuthor(updateInput)).rejects.toThrow(
         'Database connection failed',
       );
-    });
-  });
-
-  describe('edge cases', () => {
-    it('should handle null values in findByName', async () => {
-      authorRepository.findByName.mockResolvedValue([]);
-
-      const result = await service.findByName('');
-
-      expect(result).toEqual([]);
-      expect(authorRepository.findByName).toHaveBeenCalledWith('');
-    });
-
-    it('should handle special characters in findByName', async () => {
-      const mockAuthors = [{ ...mockAuthor, name: "O'Connor" }];
-      authorRepository.findByName.mockResolvedValue(mockAuthors);
-
-      const result = await service.findByName("O'Connor");
-
-      expect(result).toEqual(mockAuthors);
-      expect(authorRepository.findByName).toHaveBeenCalledWith("O'Connor");
-    });
-
-    it('should handle very long names in findByName', async () => {
-      const longName = 'A'.repeat(1000);
-      authorRepository.findByName.mockResolvedValue([]);
-
-      const result = await service.findByName(longName);
-
-      expect(result).toEqual([]);
-      expect(authorRepository.findByName).toHaveBeenCalledWith(longName);
     });
   });
 });

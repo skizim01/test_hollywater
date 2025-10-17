@@ -1,81 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { Author } from '../entities/author.entity';
+import { SearchAuthorsInput } from '../dto/search-authors.input';
+import { SearchAuthorsResult } from '../dto/search-result.dto';
+import { CreateAuthorInput } from '../dto/create-author.input';
+import { UpdateAuthorInput } from '../dto/update-author.input';
 
 @Injectable()
 export class AuthorRepository extends Repository<Author> {
   constructor(private dataSource: DataSource) {
     super(Author, dataSource.createEntityManager());
-  }
-
-  async findByName(name: string): Promise<Author[]> {
-    return this.createQueryBuilder('author')
-      .leftJoinAndSelect('author.books', 'books')
-      .where('LOWER(author.name) LIKE LOWER(:name)', { name: `%${name}%` })
-      .orderBy('author.name', 'ASC')
-      .getMany();
-  }
-
-  async findWithBookCount(): Promise<Array<Author & { bookCount: number }>> {
-    const authors = await this.createQueryBuilder('author')
-      .leftJoin('author.books', 'books')
-      .select('author.id', 'id')
-      .addSelect('author.name', 'name')
-      .addSelect('author.bio', 'bio')
-      .addSelect('author.createdAt', 'createdAt')
-      .addSelect('author.updatedAt', 'updatedAt')
-      .addSelect('COUNT(books.id)', 'bookCount')
-      .groupBy('author.id')
-      .orderBy('bookCount', 'DESC')
-      .getRawMany();
-
-    return authors.map((author) => ({
-      ...author,
-      bookCount: parseInt(author.bookCount),
-    }));
-  }
-
-  async getStatistics(): Promise<{
-    totalAuthors: number;
-    authorsWithBooks: number;
-    averageBooksPerAuthor: number;
-    mostProlificAuthor: string;
-  }> {
-    const totalAuthors = await this.count();
-
-    const authorsWithBooks = await this.createQueryBuilder('author')
-      .leftJoin('author.books', 'books')
-      .where('books.id IS NOT NULL')
-      .getCount();
-
-    const averageBooksResult = await this.createQueryBuilder('author')
-      .leftJoin('author.books', 'books')
-      .select('AVG(book_count)', 'avgBooks')
-      .from((subQuery) => {
-        return subQuery
-          .select('author.id', 'authorId')
-          .addSelect('COUNT(books.id)', 'book_count')
-          .from(Author, 'author')
-          .leftJoin('author.books', 'books')
-          .groupBy('author.id');
-      }, 'stats')
-      .getRawOne();
-
-    const mostProlificAuthorResult = await this.createQueryBuilder('author')
-      .leftJoin('author.books', 'books')
-      .select('author.name', 'name')
-      .addSelect('COUNT(books.id)', 'bookCount')
-      .groupBy('author.id')
-      .orderBy('bookCount', 'DESC')
-      .limit(1)
-      .getRawOne();
-
-    return {
-      totalAuthors,
-      authorsWithBooks,
-      averageBooksPerAuthor: parseFloat(averageBooksResult?.avgBooks || '0'),
-      mostProlificAuthor: mostProlificAuthorResult?.name || 'N/A',
-    };
   }
 
   async findByIdWithBooks(id: number): Promise<Author | null> {
@@ -85,10 +19,68 @@ export class AuthorRepository extends Repository<Author> {
     });
   }
 
-  async findAllWithBooks(): Promise<Author[]> {
-    return this.find({
+  applySearchQuery(queryBuilder: any, query: string) {
+    queryBuilder.where(
+      '(author.name ILIKE :query OR author.bio ILIKE :query)',
+      { query: `%${query}%` },
+    );
+  }
+
+  async findByIds(ids: number[]): Promise<Author[]> {
+    if (ids.length === 0) return [];
+
+    return this.createQueryBuilder('author')
+      .where('author.id IN (:...ids)', { ids })
+      .getMany();
+  }
+
+  async searchAuthors(
+    searchInput: SearchAuthorsInput,
+    page = 1,
+    limit = 20,
+  ): Promise<SearchAuthorsResult> {
+    const queryBuilder = this.createQueryBuilder('author');
+
+    if (searchInput.query) {
+      this.applySearchQuery(queryBuilder, searchInput.query);
+    }
+
+    const totalQuery = queryBuilder.clone();
+    const total = await totalQuery.getCount();
+
+    const authors = await queryBuilder
+      .orderBy('author.name', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
+
+    return {
+      authors,
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async createAuthor(createAuthorInput: CreateAuthorInput): Promise<Author> {
+    const author = this.create(createAuthorInput);
+    return this.save(author);
+  }
+
+  async updateAuthor(updateAuthorInput: UpdateAuthorInput): Promise<Author> {
+    const { id, ...updateData } = updateAuthorInput;
+
+    await this.update(id, updateData);
+
+    const updatedAuthor = await this.findOne({
+      where: { id },
       relations: ['books'],
-      order: { name: 'ASC' },
     });
+
+    if (!updatedAuthor) {
+      throw new Error(`Author with ID ${id} not found`);
+    }
+
+    return updatedAuthor;
   }
 }

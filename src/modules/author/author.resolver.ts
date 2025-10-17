@@ -1,40 +1,59 @@
-import { Resolver, Query, Args, Int } from '@nestjs/graphql';
+import {
+  Resolver,
+  Query,
+  Mutation,
+  Args,
+  Int,
+  ResolveField,
+  Parent,
+} from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { AuthorService } from './author.service';
 import { Author } from './entities/author.entity';
+import { SearchAuthorsInput } from './dto/search-authors.input';
+import { SearchAuthorsResult } from './dto/search-result.dto';
+import { CreateAuthorInput } from './dto/create-author.input';
+import { UpdateAuthorInput } from './dto/update-author.input';
 import { RateLimitGuard } from '../rate-limit/rate-limit.guard';
+import { Book } from '../book/entities/book.entity';
+import { BookService } from '../book/book.service';
 
 @Resolver(() => Author)
 @UseGuards(RateLimitGuard)
 export class AuthorResolver {
-  constructor(private readonly authorService: AuthorService) {}
+  constructor(
+    private readonly authorService: AuthorService,
+    private readonly bookService: BookService,
+  ) {}
 
-  @Query(() => [Author], { name: 'authors' })
-  async findAll(): Promise<Author[]> {
-    return this.authorService.findAll();
+  @Query(() => SearchAuthorsResult, { name: 'searchAuthors' })
+  async searchAuthors(
+    @Args('searchInput', { type: () => SearchAuthorsInput })
+    searchInput: SearchAuthorsInput,
+    @Args('page', { type: () => Int, defaultValue: 1 }) page: number,
+    @Args('limit', { type: () => Int, defaultValue: 20 }) limit: number,
+  ): Promise<SearchAuthorsResult> {
+    return this.authorService.searchAuthors(searchInput, page, limit);
   }
 
-  @Query(() => Author, { name: 'author' })
-  async findOne(@Args('id', { type: () => Int }) id: number): Promise<Author> {
-    return this.authorService.findOne(id);
+  @Mutation(() => Author, { name: 'createAuthor' })
+  async createAuthor(
+    @Args('createAuthorInput', { type: () => CreateAuthorInput })
+    createAuthorInput: CreateAuthorInput,
+  ): Promise<Author> {
+    return this.authorService.createAuthor(createAuthorInput);
   }
 
-  @Query(() => [Author], { name: 'searchAuthors' })
-  async findByName(
-    @Args('name', { type: () => String }) name: string,
-  ): Promise<Author[]> {
-    return this.authorService.findByName(name);
+  @Mutation(() => Author, { name: 'updateAuthor' })
+  async updateAuthor(
+    @Args('updateAuthorInput', { type: () => UpdateAuthorInput })
+    updateAuthorInput: UpdateAuthorInput,
+  ): Promise<Author> {
+    return this.authorService.updateAuthor(updateAuthorInput);
   }
 
-  @Query(() => String, { name: 'authorsWithBookCount' })
-  async findWithBookCount(): Promise<string> {
-    const authors = await this.authorService.findWithBookCount();
-    return JSON.stringify(authors, null, 2);
-  }
-
-  @Query(() => String, { name: 'authorStatistics' })
-  async getStatistics(): Promise<string> {
-    const stats = await this.authorService.getStatistics();
-    return JSON.stringify(stats, null, 2);
+  @ResolveField(() => [Book])
+  async books(@Parent() author: Author): Promise<Book[]> {
+    return await this.bookService.findByAuthorId(author.id);
   }
 }
